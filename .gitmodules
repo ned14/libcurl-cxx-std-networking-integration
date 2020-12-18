@@ -1,0 +1,9 @@
+[submodule "curl"]
+	path = curl
+	url = https://github.com/curl/curl
+[submodule "asio"]
+	path = asio
+	url = https://github.com/chriskohlhoff/asio.git
+[submodule "status-code"]
+	path = status-code
+	url = git@github.com:ned14/status-code.git
