@@ -53,6 +53,7 @@ namespace libcurl_cxx_std_networking_integration
     struct socket_state_t : std::enable_shared_from_this<socket_state_t>
     {
       networking::ip::tcp::socket s;
+      std::atomic<int> listening_state{CURL_POLL_REMOVE};
       socket_state_t(networking::io_context &ctx)
           : s(ctx)
       {
@@ -117,8 +118,11 @@ namespace libcurl_cxx_std_networking_integration
       {
         return;
       }
-      // Immediately rearm
-      which->s.async_wait(networking::ip::tcp::socket::wait_read, [this, sock = which](auto ec) { _read_possible(sock, ec); });
+      // Immediately rearm if still being watched by curl
+      if(CURL_POLL_INOUT == which->listening_state || CURL_POLL_IN == which->listening_state)
+      {
+        which->s.async_wait(networking::ip::tcp::socket::wait_read, [this, sock = which](auto ec) { _read_possible(sock, ec); });
+      }
       // ASIO can call this from any thread, and libcurl is single threaded
       std::unique_lock g(_lock);
       // Tell libcurl that this socket is ready to read
@@ -134,8 +138,11 @@ namespace libcurl_cxx_std_networking_integration
       {
         return;
       }
-      // Immediately rearm
-      which->s.async_wait(networking::ip::tcp::socket::wait_write, [this, sock = which](auto ec) { _write_possible(sock, ec); });
+      // Immediately rearm if still being watched by curl
+      if(CURL_POLL_INOUT == which->listening_state || CURL_POLL_OUT == which->listening_state)
+      {
+        which->s.async_wait(networking::ip::tcp::socket::wait_write, [this, sock = which](auto ec) { _write_possible(sock, ec); });
+      }
       // ASIO can call this from any thread, and libcurl is single threaded
       std::unique_lock g(_lock);
       // Tell libcurl that this socket is ready to write
@@ -214,6 +221,7 @@ namespace libcurl_cxx_std_networking_integration
           // Cache lookup for next time
           CURLM_CHECK(curl_multi_assign(_curlm, s, sock.get()));
         }
+        sock->listening_state = what;
         if(CURL_POLL_REMOVE == what)
         {
           sock->s.cancel();  // cancel all outstanding operations with ASIO on this socket
